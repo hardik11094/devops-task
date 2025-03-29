@@ -1,36 +1,70 @@
-trigger: none
-
-pool:
-  name: "Azure Self-hosted"
-
+trigger:
+- main
+ 
 variables:
-  - name: 'service_version'
-    value: '$(Build.BuildNumber)'
-  - name: 'applicationName'
-    value: 'ip-tool'
-  - name: 'repositoryBase'
-    value: 'devops-task'
-  - name: 'AzureContainerRegistry'
-    value: 'docker.my.registry'
-
+  imageName: 'ip-tool'
+  dockerRegistryServiceConnection: 'your-acr-service-connection'
+  containerRegistry: 'yourcontainerregistry.azurecr.io'
+  tag: '$(Build.BuildId)'
+ 
 stages:
 - stage: Build
-  jobs: 
-  - job: Build_DockerImage
+  displayName: Build and Push
+  jobs:
+  - job: BuildAndPush
+    pool:
+      vmImage: 'ubuntu-latest'
     steps:
     - task: Docker@2
-      displayName: 'Build and Push Docker Image'
+      displayName: 'Build Docker image'
       inputs:
-        command: 'buildAndPush'
-        Dockerfile: '$(Pipeline.Workspace)/s/my-services/$(applicationName)/docker/Dockerfile'
-        buildContext: '**'
-        addBaseImageData: false
-        containerRegistry: $(AzureContainerRegistry)
-        repository: $(repositoryBase)/$(applicationName)
-        tags: latest
+        command: build
+        repository: $(imageName)
+        dockerfile: 'Dockerfile'
+        tags: |
+          $(tag)
+          latest
+ 
+    - task: Docker@2
+      displayName: 'Login to ACR'
+      inputs:
+        command: login
+        containerRegistry: $(dockerRegistryServiceConnection)
+ 
+    - task: Docker@2
+      displayName: 'Push to ACR'
+      inputs:
+        command: push
+        repository: $(containerRegistry)/$(imageName)
+        tags: |
+          $(tag)
+          latest
 
-    - script: |
-        docker rmi '$(AzureContainerRegistry)/$(repositoryBase)/$(applicationName):$(service_version)'
-        docker rmi '$(AzureContainerRegistry)/$(repositoryBase)/$(applicationName):latest'
-      displayName: "Clean up old images"
-      continueOnError: true
+- stage: Deploy
+  displayName: Deploy to Kubernetes
+  dependsOn: Build
+  jobs:
+  - deployment: Deploy
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: KubernetesManifest@0
+            displayName: 'Create imagePullSecret'
+            inputs:
+              action: createSecret
+              secretName: 'acr-auth'
+              dockerRegistryEndpoint: $(dockerRegistryServiceConnection)
+              namespace: 'default'
+ 
+          - task: KubernetesManifest@0
+            displayName: 'Deploy to Kubernetes'
+            inputs:
+              action: deploy
+              manifests: |
+                $(Build.SourcesDirectory)/manifests/deployment.yaml
+                $(Build.SourcesDirectory)/manifests/service.yaml
+              imagePullSecrets: 'acr-auth'
+              containers: '$(containerRegistry)/$(imageName):$(tag)'
+              namespace: 'default'
