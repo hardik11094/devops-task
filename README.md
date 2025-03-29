@@ -23,7 +23,7 @@ OR
 
 You can pass them directly in the deployment yaml as well.
 
-# Set environment variables (if needed)
+# Set environment variables
 ENV EMAIL_SENDER=""
 ENV EMAIL_RECIPIENTS=""
 ENV EMAIL_PASSWORD=""
