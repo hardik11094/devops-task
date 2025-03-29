@@ -1,0 +1,36 @@
+trigger: none
+
+pool:
+  name: "Azure Self-hosted"
+
+variables:
+  - name: 'service_version'
+    value: '$(Build.BuildNumber)'
+  - name: 'applicationName'
+    value: 'ip-tool'
+  - name: 'repositoryBase'
+    value: 'devops-task'
+  - name: 'AzureContainerRegistry'
+    value: 'docker.my.registry'
+
+stages:
+- stage: Build
+  jobs: 
+  - job: Build_DockerImage
+    steps:
+    - task: Docker@2
+      displayName: 'Build and Push Docker Image'
+      inputs:
+        command: 'buildAndPush'
+        Dockerfile: '$(Pipeline.Workspace)/s/my-services/$(applicationName)/docker/Dockerfile'
+        buildContext: '**'
+        addBaseImageData: false
+        containerRegistry: $(AzureContainerRegistry)
+        repository: $(repositoryBase)/$(applicationName)
+        tags: latest
+
+    - script: |
+        docker rmi '$(AzureContainerRegistry)/$(repositoryBase)/$(applicationName):$(service_version)'
+        docker rmi '$(AzureContainerRegistry)/$(repositoryBase)/$(applicationName):latest'
+      displayName: "Clean up old images"
+      continueOnError: true
