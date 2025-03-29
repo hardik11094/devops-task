@@ -1,5 +1,8 @@
 #!/bin/bash
+set -x
 set -e
+set -o errexit
+set -o pipefail
  
 # Function to run in collection mode
 run_collection_mode() {
